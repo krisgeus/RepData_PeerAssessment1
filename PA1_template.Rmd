@@ -1,20 +1,92 @@
 # Reproducible Research: Peer Assessment 1
 
+```{r setup}
+library(knitr)
+#only for local use: @TODO: remove
+setwd('/Users/kgeusebroek/dev/xebia/coursera/repdata-004/assignments/week1/RepData_PeerAssessment1')
+
+```
 
 ## Loading and preprocessing the data
-
-
+```{r loading, results="hide"}
+dataFile <- unz(normalizePath('activity.zip'), 'activity.csv')
+df <- read.csv(dataFile, header=T, stringsAsFactors = FALSE, sep=',')
+colnames(df)[1] <- "steps"
+colnames(df)[2] <- "date"
+colnames(df)[3] <- "interval"
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r}
+aggregated_steps = aggregate( steps ~ date, data=df, FUN=sum )
+
+library(ggplot2)
+p = ggplot()
+p + geom_histogram(data=aggregated_steps, aes(x=steps))
+
+steps_mean <- mean(aggregated_steps$steps)
+steps_median <- median(aggregated_steps$steps)
+```
+
+Mean is `r steps_mean` and Median is `r steps_median`
 
 
 ## What is the average daily activity pattern?
 
+```{r}
+aggregated_activity = aggregate( steps ~ interval, data=df, FUN=sum )
+aggregated_activity$intervalDT <- as.POSIXct(strptime(sprintf("%04s", aggregated_activity$interval), format="%H%M"))
 
+library(ggplot2)
+library(scales)
+p = ggplot(data=aggregated_activity, aes(x=intervalDT, y=steps, group=1))
+p + geom_line() + scale_x_datetime(labels = date_format("%H:%M"), breaks = date_breaks("2 hours"))
+
+max_steps <- max(df[, 1], na.rm =T)
+interval_with_max_steps <- df[which(df[, 1] == max_steps), ]
+```
+
+The interval with the most steps (`r max_steps`) is: `r interval_with_max_steps$interval` on `r interval_with_max_steps$date`
 
 ## Imputing missing values
+First count the number of rows containing NA values
 
+```{r}
+numberNAs <- sum(is.na(df$steps) | is.na(df$interval) | is.na(df$date))
+```
+`r numberNAs` rows with NA values
+
+```{r}
+mean_steps_by_interval = aggregate( steps ~ interval, data=df, FUN=mean )
+merged <- merge(df, mean_steps_by_interval, by.x = "interval", by.y="interval", all.x = TRUE)
+
+df_without_na <- df
+df_without_na$steps <- ifelse(is.na(merged$steps.x), merged$steps.y, merged$steps.x)
+
+aggregated_steps = aggregate( steps ~ date, data=df_without_na, FUN=sum )
+
+library(ggplot2)
+p = ggplot()
+p + geom_histogram(data=aggregated_steps, aes(x=steps))
+
+steps_mean <- mean(aggregated_steps$steps)
+steps_median <- median(aggregated_steps$steps)
+```
+
+Mean is `r steps_mean` and Median is `r steps_median`
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+df_without_na$dateConverted <- as.Date(as.character(df_without_na$date), format="%Y-%m-%d")
+
+df_without_na$wd <- weekdays(df_without_na$dateConverted)
+df_without_na$weekend <- ifelse(df_without_na$wd %in% c("Saturday","Sunday"), "weekend", "weekday")
+
+aggregated_activity = aggregate( steps ~ interval + weekend, data=df_without_na, FUN=sum )
+aggregated_activity$intervalDT <- as.POSIXct(strptime(sprintf("%04s", aggregated_activity$interval), format="%H%M"))
+
+library(lattice)
+with(aggregated_activity, xyplot(steps ~ interval | weekend, type='l', as.table = T))
+```
